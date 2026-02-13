@@ -1,84 +1,140 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "RisingRock.h"
-#include "Components/StaticMeshComponent.h"
+#include "RisingWall.h"
 #include "TrackedVelocity.h"
 #include "TimerManager.h"
 
-// Sets default values
-ARisingRock::ARisingRock()
+ARisingWall::ARisingWall()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
-	
-	Mesh->SetSimulatePhysics(true);
-	Mesh->SetEnableGravity(true);
+
+	Mesh->SetSimulatePhysics(false);
+	Mesh->SetEnableGravity(false);
 	
 	Mesh->SetGenerateOverlapEvents(true);
 }
 
-// Called when the game starts or when spawned
-void ARisingRock::BeginPlay()
+void ARisingWall::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	StartRising();
+	
 	if (Mesh)
-    {
-        Mesh->SetGenerateOverlapEvents(true);
-
-        // Bind overlap event for punching
-        Mesh->OnComponentBeginOverlap.AddDynamic(this, &ARisingRock::OnMeshBeginOverlap);
-    }
+	{
+		Mesh->SetGenerateOverlapEvents(true);
+		
+		Mesh->OnComponentBeginOverlap.AddDynamic(this, &ARisingWall::OnMeshBeginOverlap);
+	}
 }
 
-// Called every frame
-void ARisingRock::Tick(float DeltaTime)
+void ARisingWall::StartRising()
+{
+	const FVector StartLoc = GetActorLocation();
+	const FVector Target = StartLoc + FVector(0.f, 0.f, RiseHeight);
+	
+	SetCollisionEnabled(false);
+
+	BeginMoveTo(Target, false);
+}
+
+void ARisingWall::StartLoweringAndDestroy()
+{
+	if (bLowering)
+	{
+		return;
+	}
+	bLowering = true;
+	const FVector StartLoc = GetActorLocation();
+	const FVector Target = StartLoc - FVector(0.f, 0.f, RiseHeight);
+	
+	SetCollisionEnabled(false);
+
+	BeginMoveTo(Target, true);
+}
+
+void ARisingWall::BeginMoveTo(const FVector& Target, bool bDestroyAfter)
+{
+	MoveStart = GetActorLocation();
+	MoveEnd = Target;
+	Elapsed = 0.0f;
+
+	bMoving = true;
+	bDestroyWhenDone = bDestroyAfter;
+
+	PrimaryActorTick.bCanEverTick = true;
+}
+
+void ARisingWall::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	
+	if (!bMoving) return;
 
-	if (!bHasLaunched || !Mesh) return;
+	if (RiseTime <= 0.0f)
+	{
+		SetActorLocation(MoveEnd);
+		bMoving = false;
 
-    // Prevent it going above MaxZ
-    FVector Loc = GetActorLocation();
-    if (Loc.Z > MaxZ)
-    {
-        Loc.Z = MaxZ;
-        SetActorLocation(Loc);
+		if (!bDestroyWhenDone && bEnableCollisionWhenFinished)
+		{
+			SetCollisionEnabled(true);
+		}
 
-        // Stop upward motion if it hits the cap
-        FVector V = Mesh->GetPhysicsLinearVelocity();
-        if (V.Z > 0.0f)
-        {
-            V.Z = 0.0f;
-            Mesh->SetPhysicsLinearVelocity(V);
-        }
-    }
+		if (bDestroyWhenDone)
+		{
+			Destroy();
+		}
+		else
+		{
+			PrimaryActorTick.bCanEverTick = false;
+		}
+		return;
+	}
+
+	Elapsed += DeltaTime;
+	const float Alpha = FMath::Clamp(Elapsed / RiseTime, 0.0f, 1.0f);
+	
+	const float Smooth = Alpha * Alpha * (3.0f - 2.0f * Alpha);
+
+	SetActorLocation(FMath::Lerp(MoveStart, MoveEnd, Smooth));
+
+	if (Alpha >= 1.0f)
+	{
+		SetActorLocation(MoveEnd);
+		
+		bMoving = false;
+
+		if (!bDestroyWhenDone && bEnableCollisionWhenFinished)
+		{
+			SetCollisionEnabled(true);
+		}
+
+		if (bDestroyWhenDone)
+		{
+			Destroy();
+		}
+		else
+		{
+			PrimaryActorTick.bCanEverTick = false;
+		}
+	}
 }
 
-void ARisingRock::LaunchFromStomp(float StompStrength, float MaxAllowedWorldZ)
+void ARisingWall::SetCollisionEnabled(bool bEnabled)
 {
-    if (!Mesh) return;
+	if (!Mesh) return;
 
-    MaxZ = MaxAllowedWorldZ - MaxHeight;
-
-    // Convert stomp strength to an upward impulse
-    const float RawImpulse = (StompStrength * StrengthToImpulse);
-    const float UpImpulse = FMath::Clamp(RawImpulse, MinUpImpulse, MaxUpImpulse);
-
-    // Clear existing vertical velocity so the launch is consistent
-    FVector V = Mesh->GetPhysicsLinearVelocity();
-    V.Z = 0.f;
-    Mesh->SetPhysicsLinearVelocity(V);
-
-    Mesh->AddImpulse(FVector(0.f, 0.f, UpImpulse), NAME_None, true);
-
-    bHasLaunched = true;
+	Mesh->SetCollisionEnabled(
+		bEnabled ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision
+	);
 }
 
-void ARisingRock::OnMeshBeginOverlap(
+void ARisingWall::OnMeshBeginOverlap(
 	UPrimitiveComponent* OverlappedComp,
 	AActor* OtherActor,
 	UPrimitiveComponent* OtherComp,
@@ -91,7 +147,7 @@ void ARisingRock::OnMeshBeginOverlap(
 	
 	if (Mesh->GetCollisionEnabled() == ECollisionEnabled::NoCollision)
 		return;
-	
+
 	const bool bIsHand = OtherComp->ComponentHasTag(TEXT("VRHand"));
 	const bool bIsFoot = OtherComp->ComponentHasTag(TEXT("VRFoot"));
 	
@@ -150,8 +206,8 @@ void ARisingRock::OnMeshBeginOverlap(
 	// Turn physics on at the moment of impact
 	Mesh->SetSimulatePhysics(true);
 	
-	const FVector RockVel = Mesh->GetPhysicsLinearVelocity();
-	const FVector RelVel  = HandVel - RockVel;
+	const FVector WallVel = Mesh->GetPhysicsLinearVelocity();
+	const FVector RelVel  = HandVel - WallVel;
 	
 	const float ClosingSpeed = FVector::DotProduct(RelVel, Dir); 
 	if (ClosingSpeed < PunchMinSpeed) return;
@@ -169,8 +225,8 @@ void ARisingRock::OnMeshBeginOverlap(
 	}
 
 	// Convert to impulse 
-	const float RockMassKg = Mesh->GetMass();
-	const float ImpulseMag = RockMassKg * DesiredDeltaV * 6;
+	const float	WallMassKg = Mesh->GetMass();
+	const float ImpulseMag = WallMassKg * DesiredDeltaV * 6;
 	
 	Mesh->AddImpulse(Dir * ImpulseMag, NAME_None, false);
 	

@@ -4,16 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "RisingRock.generated.h"
+#include "RisingWall.generated.h"
 
 UCLASS()
-class HONORSPROJECT_API ARisingRock : public AActor
+class HONORSPROJECT_API ARisingWall : public AActor
 {
 	GENERATED_BODY()
 	
 public:	
 	// Sets default values for this actor's properties
-	ARisingRock();
+	ARisingWall();
 
 protected:
 	// Called when the game starts or when spawned
@@ -32,6 +32,24 @@ public:
 		bool bFromSweep,
 		const FHitResult& SweepResult
 	);
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UStaticMeshComponent* Mesh = nullptr;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rise")
+	float RiseHeight = 140.f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rise")
+	float RiseTime = 0.35f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rise")
+	bool bEnableCollisionWhenFinished = true;
+	
+	UFUNCTION(BlueprintCallable, Category="Wall|Move")
+	void StartRising();
+	
+	UFUNCTION(BlueprintCallable, Category="Wall|Move")
+	void StartLoweringAndDestroy();
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch|Physics")
 	float ArmEffectiveMassKg = 3.25f;
@@ -55,37 +73,21 @@ public:
 	float MomentumTransfer = 0.8f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch")
-	float PunchImpulseStrength = 1200.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch")
 	float PunchCooldown = 0.15f;
-
+	
 	bool bCanBePunched = true;
 	FTimerHandle PunchCooldownTimer;
-	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	UStaticMeshComponent* Mesh = nullptr;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp")
-	float MinUpImpulse = 600.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp")
-	float MaxUpImpulse = 4500.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp")
-	float StrengthToImpulse = 25.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp")
-	float MaxHeight = 10.f;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rise")
-	bool bEnableCollision = true;
-
-	bool bIsPhysicsActive = false;
-
-	void LaunchFromStomp(float StompStrength, float MaxAllowedWorldZ);
-	
 private:
-	bool bHasLaunched = false;
-	float MaxZ = 0.0f;
+	FVector MoveStart;
+	FVector MoveEnd;
+	float Elapsed = 0.0f;
+	
+	bool bMoving = false;
+	bool bLowering = false;
+	bool bDestroyWhenDone = false;
+
+	void BeginMoveTo(const FVector& Target, bool bDestroyAfter);
+	void SetCollisionEnabled(bool bEnabled);
+
 };

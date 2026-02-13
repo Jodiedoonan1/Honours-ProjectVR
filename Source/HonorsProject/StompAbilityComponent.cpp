@@ -7,11 +7,7 @@
 // Sets default values for this component's properties
 UStompAbilityComponent::UStompAbilityComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
 }
 
 
@@ -25,8 +21,8 @@ void UStompAbilityComponent::BeginPlay()
 	FootLeft  = Cast<USceneComponent>(FootLeftRef.GetComponent(Owner));
 	FootRight = Cast<USceneComponent>(FootRightRef.GetComponent(Owner));
 	ForwardReference = Cast<USceneComponent>(ForwardRef.GetComponent(Owner));
+	HeadComponent = Cast<USceneComponent>(HeadRef.GetComponent(Owner));
 	Calibrate();
-	// ...
 	
 }
 
@@ -67,7 +63,7 @@ void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& D
 	if (Data.State == EFootState::Cooldown)
 	{
 		Data.CooldownRemaining -= DeltaTime;
-		if (Data.CooldownRemaining <= 0.f)
+		if (Data.CooldownRemaining <= 0.0f)
 		{
 			Data.State = EFootState::Grounded;
 		}
@@ -101,11 +97,26 @@ void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& D
 
 			if (bLanded && bFast)
 			{
+				const float StompStrength = FMath::Abs(Data.VerticalSpeed);
 				FVector GroundLoc;
 				FRotator GroundRot;
-				if (GetGroundInFront(GroundLoc, GroundRot))
+				FHitResult LookHit;
+				if (ARisingRock* ExistingRock = FindLookedAtRock(LookHit))
 				{
-					SpawnRock(GroundLoc, GroundRot);
+					AActor* Owner = GetOwner();
+					float HeadZ = 0.f;
+					if (HeadComponent) HeadZ = HeadComponent->GetComponentLocation().Z;
+					else if (Owner)   HeadZ = Owner->GetActorLocation().Z + 160.f;
+					else              HeadZ = LookHit.Location.Z + 160.f;
+
+					ExistingRock->LaunchFromStomp(StompStrength, HeadZ);
+				}
+				else
+				{
+					if (GetGroundInFront(GroundLoc, GroundRot))
+					{
+						SpawnRock(GroundLoc, GroundRot, StompStrength);
+					}
 				}
 
 				Data.State = EFootState::Cooldown;
@@ -123,6 +134,40 @@ void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& D
 	}
 
 	Data.LastZ = CurrentZ;
+}
+
+ARisingRock* UStompAbilityComponent::FindLookedAtRock(FHitResult& OutHit) const
+{
+	if (!GetWorld()) return nullptr;
+
+	const USceneComponent* Head = HeadComponent ? HeadComponent : ForwardReference;
+	if (!Head) return nullptr;
+
+	const FVector Start = Head->GetComponentLocation();
+	const FVector Dir   = Head->GetForwardVector().GetSafeNormal();
+	const FVector End   = Start + Dir * TargetRockRange;
+
+	TArray<AActor*> Ignore;
+	if (AActor* Owner = GetOwner()) Ignore.Add(Owner);
+
+	// Sphere trace is way more reliable than a thin line in VR
+	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(
+		GetWorld(),
+		Start,
+		End,
+		TargetRockSphereRadius,
+		UEngineTypes::ConvertToTraceType(TargetTraceChannel),
+		false,
+		Ignore,
+		EDrawDebugTrace::None,
+		OutHit,
+		true
+	);
+
+	if (!bHit) return nullptr;
+	
+	ARisingRock* Rock = Cast<ARisingRock>(OutHit.GetActor());
+	return Rock;
 }
 
 bool UStompAbilityComponent::GetGroundInFront(FVector& OutLoc, FRotator& OutRot) const
@@ -161,15 +206,36 @@ bool UStompAbilityComponent::GetGroundInFront(FVector& OutLoc, FRotator& OutRot)
 	return true;
 }
 
-void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator& Rot) const
+void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength) const
 {
 	if (!RockClass || !GetWorld()) return;
 
-	FVector SpawnLoc = GroundLoc;
-	SpawnLoc.Z -= SpawnDownOffset;
+    FVector SpawnLoc = GroundLoc;
+    SpawnLoc.Z -= SpawnDownOffset;
 
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    FActorSpawnParameters Params;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	GetWorld()->SpawnActor<AActor>(RockClass, SpawnLoc, Rot, Params);
+    // Spawn as ARisingRock
+    ARisingRock* Rock = GetWorld()->SpawnActor<ARisingRock>(RockClass, SpawnLoc, Rot, Params);
+    if (!Rock) return;
+
+    
+    AActor* Owner = GetOwner();
+    float HeadZ = 0.f;
+
+    if (HeadComponent)
+    {
+        HeadZ = HeadComponent->GetComponentLocation().Z;
+    }
+    else if (Owner)
+    {
+        HeadZ = Owner->GetActorLocation().Z + 160.f; // fallback
+    }
+    else
+    {
+        HeadZ = SpawnLoc.Z + 160.f;
+    }
+	
+    Rock->LaunchFromStomp(StompStrength, HeadZ);
 }
