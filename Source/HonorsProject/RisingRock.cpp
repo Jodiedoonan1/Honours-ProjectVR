@@ -25,23 +25,22 @@ void ARisingRock::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	BaseMaxHeight = MaxHeight;
+	
 	if (Mesh)
     {
         Mesh->SetGenerateOverlapEvents(true);
-
-        // Bind overlap event for punching
+		
         Mesh->OnComponentBeginOverlap.AddDynamic(this, &ARisingRock::OnMeshBeginOverlap);
     }
 }
 
-// Called every frame
 void ARisingRock::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
 	if (!bHasLaunched || !Mesh) return;
-
-    // Prevent it going above MaxZ
+	
     FVector Loc = GetActorLocation();
     if (Loc.Z > MaxZ)
     {
@@ -58,17 +57,23 @@ void ARisingRock::Tick(float DeltaTime)
     }
 }
 
+void ARisingRock::SetSizeScale(float Scale)
+{
+	MaxHeight = BaseMaxHeight * Scale;
+}
+
 void ARisingRock::LaunchFromStomp(float StompStrength, float MaxAllowedWorldZ)
 {
     if (!Mesh) return;
+	
+	Mesh->SetUseCCD(false);
 
     MaxZ = MaxAllowedWorldZ - MaxHeight;
-
+	
     // Convert stomp strength to an upward impulse
     const float RawImpulse = (StompStrength * StrengthToImpulse);
     const float UpImpulse = FMath::Clamp(RawImpulse, MinUpImpulse, MaxUpImpulse);
-
-    // Clear existing vertical velocity so the launch is consistent
+	
     FVector V = Mesh->GetPhysicsLinearVelocity();
     V.Z = 0.f;
     Mesh->SetPhysicsLinearVelocity(V);
@@ -76,6 +81,23 @@ void ARisingRock::LaunchFromStomp(float StompStrength, float MaxAllowedWorldZ)
     Mesh->AddImpulse(FVector(0.f, 0.f, UpImpulse), NAME_None, true);
 
     bHasLaunched = true;
+	
+	GetWorldTimerManager().ClearTimer(CCDEnableTimer);
+	GetWorldTimerManager().SetTimer(
+		CCDEnableTimer,
+		this,
+		&ARisingRock::EnableCCD,
+		0.5f,
+		false
+	);
+}
+
+void ARisingRock::EnableCCD()
+{
+	if (Mesh)
+	{
+		Mesh->SetUseCCD(true);
+	}
 }
 
 void ARisingRock::OnMeshBeginOverlap(
@@ -138,7 +160,7 @@ void ARisingRock::OnMeshBeginOverlap(
 		}
 	}
 
-	// If velocity is unreliable fallback
+	// If velocity is unreliable
 	if (HandVel.SizeSquared() < 25.0f)
 	{
 		HandVel = (GetActorLocation() - OtherComp->GetComponentLocation()) * 10.0f;
@@ -146,8 +168,7 @@ void ARisingRock::OnMeshBeginOverlap(
 
 	FVector Dir = HandVel.GetSafeNormal();
 	if (Dir.IsNearlyZero()) return;
-
-	// Turn physics on at the moment of impact
+	
 	Mesh->SetSimulatePhysics(true);
 	
 	const FVector RockVel = Mesh->GetPhysicsLinearVelocity();
@@ -170,7 +191,7 @@ void ARisingRock::OnMeshBeginOverlap(
 
 	// Convert to impulse 
 	const float RockMassKg = Mesh->GetMass();
-	const float ImpulseMag = RockMassKg * DesiredDeltaV * 6;
+	const float ImpulseMag = RockMassKg * DesiredDeltaV * 2;
 	
 	Mesh->AddImpulse(Dir * ImpulseMag, NAME_None, false);
 	
@@ -183,7 +204,7 @@ void ARisingRock::OnMeshBeginOverlap(
 	DesiredDeltaV
 );
 
-	// Cooldown so it doesn’t spam impulses each frame while overlapping
+	// Cooldown 
 	bCanBePunched = false;
 	GetWorldTimerManager().SetTimer(
 		PunchCooldownTimer,

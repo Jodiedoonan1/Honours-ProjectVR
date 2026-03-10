@@ -29,11 +29,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* Mesh = nullptr;
 
-	// How far the pillar rises along LaunchDir (cm)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LaunchPillar|Move")
 	float RiseDistance = 180.f;
-
-	// Time to rise (seconds)
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LaunchPillar|Move")
 	float RiseTime = 0.25f;
 	
@@ -42,13 +40,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LaunchPillar|Collision")
 	bool bEnableCollisionWhenFinished = true;
-
-	// Optional cleanup
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LaunchPillar|Lifetime")
-	bool bAutoDestroy = false;
+	bool bAutoDestroy = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="LaunchPillar|Lifetime", meta=(EditCondition="bAutoDestroy"))
-	float LifeAfterRise = 2.0f;
+	float LifeAfterRise = 5.0f;
 	
 private:
 	FVector LaunchDir = FVector::UpVector;

@@ -71,8 +71,7 @@ public:
 	
 	UPROPERTY()
 	TArray<TWeakObjectPtr<ARisingWall>> SpawnedWalls;
-
-	// Called by your Pawn when input changes
+	
 	UFUNCTION(BlueprintCallable, Category="EarthWall|Input")
 	void SetButtonsHeld(bool bLeftSide, bool bRightSide);
 	

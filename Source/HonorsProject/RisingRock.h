@@ -40,7 +40,7 @@ public:
 	float PunchMinSpeed = 60.f;      
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch|Tuning")
-	float PunchMaxSpeed = 1900.f;     
+	float PunchMaxSpeed = 500.f;     
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch|Tuning")
 	float MinDeltaV = 30.f;          
@@ -70,7 +70,7 @@ public:
 	float MinUpImpulse = 600.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp")
-	float MaxUpImpulse = 4500.f;
+	float MaxUpImpulse = 1500.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp")
 	float StrengthToImpulse = 25.f;
@@ -82,8 +82,18 @@ public:
 	bool bEnableCollision = true;
 
 	bool bIsPhysicsActive = false;
+	
+	float BaseMaxHeight = 0.f;
+	
+	FTimerHandle CCDEnableTimer;
+
+	UFUNCTION(BlueprintCallable)
+	void SetSizeScale(float Scale);
 
 	void LaunchFromStomp(float StompStrength, float MaxAllowedWorldZ);
+	
+	UFUNCTION()
+	void EnableCCD();
 	
 private:
 	bool bHasLaunched = false;

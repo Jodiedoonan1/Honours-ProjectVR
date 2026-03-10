@@ -3,7 +3,11 @@
 
 #include "EarthLaunchAbilityComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Camera/CameraComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
+
+static float GLaunchDebugAccum = 0.f;
 
 UEarthLaunchAbilityComponent::UEarthLaunchAbilityComponent()
 {
@@ -28,13 +32,33 @@ void UEarthLaunchAbilityComponent::BeginPlay()
 void UEarthLaunchAbilityComponent::SetTriggersHeld(bool bLeftTrigger, bool bRightTrigger)
 {
 	bLT = bLeftTrigger; bRT = bRightTrigger;
-    
-    UE_LOG(LogTemp, Warning, TEXT("EarthLaunch: SetTriggerssHeld called -> bLT=%d bRT=%d"), (int32)bLT, (int32)bRT);
 }
 
 void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    
+    AActor* Owner = GetOwner();
+    UCapsuleComponent* Capsule = Owner->FindComponentByClass<UCapsuleComponent>();
+    
+    const FVector CapLoc = Capsule->GetComponentLocation();
+    const float CapRadius = Capsule->GetScaledCapsuleRadius();
+    const float CapHalf = Capsule->GetScaledCapsuleHalfHeight();
+    const FQuat CapQuat = Capsule->GetComponentQuat();
+
+    // Draw capsule (green)
+    DrawDebugCapsule(
+        GetWorld(),
+        CapLoc,
+        CapHalf,
+        CapRadius,
+        CapQuat,
+        FColor::Green,
+        false,
+        0.0f,   // 0 = one frame
+        0,
+        1.5f
+    ); 
 	
 	if (State == EEarthLaunchState::Cooldown)
     {
@@ -48,43 +72,144 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
     
     if (bLaunching)
     {
-        AActor* Owner = GetOwner();
+       // AActor* Owner = GetOwner();
         if (!Owner) return;
 
-        // gravity
-        LaunchVelocity.Z -= LaunchGravity * DeltaTime;
-
-        // optional drag
+        const float GravityThisFrame = (LaunchVelocity.Z > 0.f) ? 1400.f : 2200.f;
+        LaunchVelocity.Z -= GravityThisFrame * DeltaTime;
+        
         if (LaunchDrag > 0.f)
         {
             LaunchVelocity -= LaunchVelocity * LaunchDrag * DeltaTime;
+        }
+        
+        const USceneComponent* Ref = ForwardComp ? ForwardComp : Owner->GetRootComponent();
+        if (Ref)
+        {
+            const FVector DesiredFlat = FVector(Ref->GetForwardVector().X, Ref->GetForwardVector().Y, 0.f).GetSafeNormal();
+
+            if (!DesiredFlat.IsNearlyZero())
+            {
+                FVector CurrentFlat = FVector(LaunchVelocity.X, LaunchVelocity.Y, 0.f);
+                const float FlatSpeed = CurrentFlat.Size();
+
+                FVector TargetFlat = DesiredFlat * FlatSpeed;
+                CurrentFlat = FMath::VInterpTo(CurrentFlat, TargetFlat, DeltaTime, 3.0f);
+
+                LaunchVelocity.X = CurrentFlat.X;
+                LaunchVelocity.Y = CurrentFlat.Y;
+            }
         }
 
         FVector Delta = LaunchVelocity * DeltaTime;
 
         FHitResult Hit;
-       // Owner->AddActorWorldOffset(Delta, true, &Hit, ETeleportType::None);
         
-        UCapsuleComponent* Capsule = Owner->FindComponentByClass<UCapsuleComponent>();
-        USceneComponent* MoveComp = Capsule ? (USceneComponent*)Capsule : Owner->GetRootComponent();
+       // UCapsuleComponent* Capsule = Owner->FindComponentByClass<UCapsuleComponent>();
+       // USceneComponent* MoveComp = Capsule ? (USceneComponent*)Capsule : Owner->GetRootComponent();
+        
+       // UCapsuleComponent* Capsule = Owner->FindComponentByClass<UCapsuleComponent>();
+        UPrimitiveComponent* MoveComp = Capsule ? Cast<UPrimitiveComponent>(Capsule)
+                                                : Cast<UPrimitiveComponent>(Owner->GetRootComponent());
 
-        MoveComp->AddWorldOffset(Delta, true, &Hit, ETeleportType::None);
-
-        if (Hit.IsValidBlockingHit())
+        if (!MoveComp) return;
+        
+        if (Capsule && GetWorld())
         {
-            // simple stop on ground/walls
-            LaunchVelocity = FVector::ZeroVector;
-            bLaunching = false;
             
-            UE_LOG(LogTemp, Warning, TEXT("Launch BLOCKED by %s comp %s normal=%s loc=%s"),
-        Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("None"),
-        Hit.GetComponent() ? *Hit.GetComponent()->GetName() : TEXT("None"),
-        *Hit.Normal.ToString(),
-        *Hit.ImpactPoint.ToString()
-    );
-        }
+            if (GLaunchDebugAccum == 0.f) // only when we logged above
+            {
+                const FVector ActorLoc = Owner->GetActorLocation();
+                const FVector RootLoc  = Owner->GetRootComponent() ? Owner->GetRootComponent()->GetComponentLocation() : FVector::ZeroVector;
+                const FVector FwdLoc   = ForwardComp ? ForwardComp->GetComponentLocation() : FVector::ZeroVector;
 
-        // you can also stop when velocity is small
+                UE_LOG(LogTemp, Warning,
+                    TEXT("[LaunchDebug] ActorLoc=%s RootLoc=%s ForwardCompLoc=%s"),
+                    *ActorLoc.ToString(),
+                    *RootLoc.ToString(),
+                    *FwdLoc.ToString()
+                );
+            }
+
+            // Draw actor location (white)
+            DrawDebugSphere(GetWorld(), Owner->GetActorLocation(), 6.f, 8, FColor::White, false, 0.0f);
+
+            // Draw ForwardComp location (cyan) if it exists
+            if (ForwardComp)
+            {
+                DrawDebugSphere(GetWorld(), ForwardComp->GetComponentLocation(), 6.f, 8, FColor::Cyan, false, 0.0f);
+            }
+
+            // If you have a camera component on the pawn, draw it (yellow)
+            if (UCameraComponent* Cam = Owner->FindComponentByClass<UCameraComponent>())
+            {
+                DrawDebugSphere(GetWorld(), Cam->GetComponentLocation(), 6.f, 8, FColor::Yellow, false, 0.0f);
+                DrawDebugLine(GetWorld(), Cam->GetComponentLocation(), Cam->GetComponentLocation() + Cam->GetForwardVector() * 30.f, FColor::Yellow, false, 0.0f, 0, 1.0f);
+            }
+
+            // Draw hands (red/blue)
+            if (LeftHand)
+            {
+                DrawDebugSphere(GetWorld(), LeftHand->GetComponentLocation(), 5.f, 8, FColor::Red, false, 0.0f);
+            }
+            if (RightHand)
+            {
+                DrawDebugSphere(GetWorld(), RightHand->GetComponentLocation(), 5.f, 8, FColor::Blue, false, 0.0f);
+            }
+        }
+        
+        const int32 NumSteps = 30;
+        const float StepDT = DeltaTime / NumSteps;
+
+        for (int32 i = 0; i < NumSteps; ++i)
+        {
+            FVector StepDelta = LaunchVelocity * StepDT;
+            
+            MoveComp->AddWorldOffset(StepDelta, true, &Hit, ETeleportType::None);
+
+          /*  UE_LOG(LogTemp, Warning, TEXT("Sweep hit? %d  BlockingHit? %d  StartPen=%d"),
+                Hit.bBlockingHit ? 1 : 0,
+                Hit.IsValidBlockingHit() ? 1 : 0,
+                Hit.bStartPenetrating ? 1 : 0
+            ); */
+
+            if (Hit.IsValidBlockingHit())
+            {
+                LaunchVelocity = FVector::ZeroVector;
+                bLaunching = false;
+
+            /*    UE_LOG(LogTemp, Warning, TEXT("Launch BLOCKED by %s comp %s normal=%s loc=%s"),
+                    Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("None"),
+                    Hit.GetComponent() ? *Hit.GetComponent()->GetName() : TEXT("None"),
+                    *Hit.Normal.ToString(),
+                    *Hit.ImpactPoint.ToString()
+                ); */
+                break;
+            }
+
+            if (!bLaunching)
+            {
+                break;
+            }
+        }
+        
+        if (Capsule)
+        {
+          /*  UE_LOG(LogTemp, Warning,
+                TEXT("Capsule CollisionEnabled=%d Profile=%s ObjType=%d"),
+                (int32)Capsule->GetCollisionEnabled(),
+                *Capsule->GetCollisionProfileName().ToString(),
+                (int32)Capsule->GetCollisionObjectType()
+            );
+
+            UE_LOG(LogTemp, Warning,
+                TEXT("Capsule responses: WorldStatic=%d WorldDynamic=%d Pawn=%d"),
+                (int32)Capsule->GetCollisionResponseToChannel(ECC_WorldStatic),
+                (int32)Capsule->GetCollisionResponseToChannel(ECC_WorldDynamic),
+                (int32)Capsule->GetCollisionResponseToChannel(ECC_Pawn)
+            );*/
+        }
+        
         if (LaunchVelocity.SizeSquared() < 25.f)
         {
             LaunchVelocity = FVector::ZeroVector;
@@ -94,26 +219,23 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
 
     if (!LeftHand || !RightHand) return;
 
-    // If triggers released, reset
+    // If triggers released reset
     if (!AreAllButtonsHeld())
     {
         State = EEarthLaunchState::Idle;
         PrimeRemaining = 0.f;
         return;
     }
-
-    // Reference forward 
+    
     const USceneComponent* Ref = ForwardComp ? ForwardComp : GetOwner()->GetRootComponent();
     if (!Ref) return;
 
     const FVector Fwd = Ref->GetForwardVector().GetSafeNormal();
     const FVector Up = FVector::UpVector;
-
-    // Hand directions
+    
     const FVector LDir = LeftHand->GetForwardVector().GetSafeNormal();
     const FVector RDir = RightHand->GetForwardVector().GetSafeNormal();
-
-    // Pose metrics
+    
     const float LDownDot = FVector::DotProduct(LDir, -Up);
     const float RDownDot = FVector::DotProduct(RDir, -Up);
 
@@ -131,8 +253,7 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
         UE_LOG(LogTemp, Verbose, TEXT("EarthLaunch: State=%d LDown=%.2f RDown=%.2f LBack=%.2f RBack=%.2f LFwd=%.2f RFwd=%.2f LUp=%.2f RUp=%.2f"),
             (int32)State, LDownDot, RDownDot, LBackDot, RBackDot, LFwdDot, RFwdDot, LUpDot, RUpDot);
     }
-
-    // Prime timeout
+    
     if (State == EEarthLaunchState::PrimedDownBack)
     {
         PrimeRemaining -= DeltaTime;
@@ -184,15 +305,13 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
                 SpawnLaunchPillar(GroundLoc, GroundRot, LaunchDir);
 
                 // Launch the player
-                float LaunchSpeed = ComputeLaunchSpeedFromHands(LaunchDir);
-                ApplyLaunch(LaunchDir, LaunchSpeed);
+                ApplyLaunch(AvgUpDot);
 
                 State = EEarthLaunchState::Cooldown;
                 CooldownRemaining = Cooldown;
             }
             else
             {
-                // Couldn't find ground — stay holding
                 State = EEarthLaunchState::HoldingButtons;
             }
         }
@@ -215,33 +334,33 @@ bool UEarthLaunchAbilityComponent::TryGetGroundPoint(FVector& OutLoc, FRotator& 
     const FVector Origin = Ref->GetComponentLocation();
     const FVector Forward = Ref->GetForwardVector().GetSafeNormal();
 
-    // Point slightly in front of player
-    const FVector TargetXY = Origin - Forward * SpawnBackwardDistance;
-
+    const FVector TargetXY = Origin;
+    
     const FVector Start = TargetXY + FVector(0, 0, TraceUp);
     const FVector End   = TargetXY - FVector(0, 0, TraceDown);
 
     FHitResult Hit;
     TArray<AActor*> Ignore;
     Ignore.Add(Owner);
-
-    const bool bHit = UKismetSystemLibrary::LineTraceSingle(
-        GetWorld(),
-        Start,
-        End,
-        UEngineTypes::ConvertToTraceType(ECC_Visibility),
-        false,
-        Ignore,
-        EDrawDebugTrace::None,
-        Hit,
-        true
-    );
+    
+    const bool bHit = UKismetSystemLibrary::SphereTraceSingle(
+    GetWorld(),
+    Start,
+    End,
+    15.f, 
+    UEngineTypes::ConvertToTraceType(ECC_Visibility),
+    false,
+    Ignore,
+    EDrawDebugTrace::ForDuration,
+    Hit,
+    true
+);
 
     if (!bHit) return false;
 
     OutLoc = Hit.Location;
 
-    // Face the same yaw as the HMD forward
+    // Face the same yaw as the forward
     const FRotator YawRot(0.f, Ref->GetComponentRotation().Yaw, 0.f);
     OutRot = YawRot;
 
@@ -257,43 +376,84 @@ FVector UEarthLaunchAbilityComponent::ComputeLaunchDirection(float AvgUpDot) con
     const FVector Fwd = Ref->GetForwardVector().GetSafeNormal();
     const FVector Up = FVector::UpVector;
 
-    // 0..1 within the allowed up-dot band
     float UpAmount = (AvgUpDot - LaunchUpMin) / FMath::Max(LaunchUpMax - LaunchUpMin, 0.01f);
     UpAmount = FMath::Clamp(UpAmount, 0.f, 1.f);
 
-    // More up-dot = more vertical component
     const float UpScale = FMath::Lerp(LaunchUpScaleMin, LaunchUpScaleMax, UpAmount);
 
     return (Fwd + Up * UpScale).GetSafeNormal();
 }
 
-float UEarthLaunchAbilityComponent::ComputeLaunchSpeedFromHands(const FVector& LaunchDir) const
+float UEarthLaunchAbilityComponent::ComputeLaunchPowerT() const
 {
-    if (!LeftVel || !RightVel) return MaxLaunchSpeed; // fallback
+    if (!LeftVel || !RightVel)
+    {
+        return 0.f;
+    }
 
-    const FVector L = LeftVel->GetVelocity();
-    const FVector R = RightVel->GetVelocity();
+    AActor* Owner = GetOwner();
+    const USceneComponent* Ref = (Owner && ForwardComp) ? ForwardComp : (Owner ? Owner->GetRootComponent() : nullptr);
+    if (!Ref)
+    {
+        return 0.f;
+    }
 
-    const FVector Avg = 0.5f * (L + R);
+    const FVector FlatForward = FVector(Ref->GetForwardVector().X, Ref->GetForwardVector().Y, 0.f).GetSafeNormal();
+    if (FlatForward.IsNearlyZero())
+    {
+        return 0.f;
+    }
 
-    // Only count motion in the launch direction (ignores sideways noise)
-    const float SpeedAlong = FMath::Max(0.f, FVector::DotProduct(Avg, LaunchDir)); // cm/s
+    const FVector AvgVel = 0.5f * (LeftVel->GetVelocity() + RightVel->GetVelocity());
+    
+    const float ForwardSpeed = FMath::Max(0.f, FVector::DotProduct(AvgVel, FlatForward));
 
-    // Map 0..MaxHandSpeedForFullLaunch -> 0..1
-    const float T = FMath::Clamp(SpeedAlong / FMath::Max(MaxHandSpeedForFullLaunch, 1.f), 0.f, 1.f);
+    // Tune these two values
+    const float MinCastSpeed = 80.f;
+    const float MaxCastSpeed = 1500.f;
 
-    return FMath::Lerp(MinLaunchSpeed, MaxLaunchSpeed, T); // cm/s launch speed
+    float T = (ForwardSpeed - MinCastSpeed) / FMath::Max(MaxCastSpeed - MinCastSpeed, 1.f);
+    T = FMath::Clamp(T, 0.f, 1.f);
+    
+    T = FMath::Pow(T, 0.85f);
+
+    return T;
 }
 
-void UEarthLaunchAbilityComponent::ApplyLaunch(const FVector& LaunchDir, float LaunchSpeed)
+void UEarthLaunchAbilityComponent::ApplyLaunch(float AvgUpDot)
 {
     AActor* Owner = GetOwner();
     if (!Owner) return;
 
-    LaunchVelocity = LaunchDir.GetSafeNormal() * LaunchSpeed;
+    const USceneComponent* Ref = ForwardComp ? ForwardComp : Owner->GetRootComponent();
+    if (!Ref) return;
+
+    const FVector FlatForward = FVector(Ref->GetForwardVector().X, Ref->GetForwardVector().Y, 0.f).GetSafeNormal();
+    const FVector Up = FVector::UpVector;
+
+    // Height from hand angle
+    float HeightT = (AvgUpDot - LaunchUpMin) / FMath::Max(LaunchUpMax - LaunchUpMin, 0.01f);
+    HeightT = FMath::Clamp(HeightT, 0.f, 1.f);
+    HeightT = FMath::Pow(HeightT, 0.9f);
+
+    // Distance from cast speed
+    const float PowerT = ComputeLaunchPowerT();
+
+    // Tune these ranges
+    const float HorizontalSpeed = FMath::Lerp(300.f, 4000.f, PowerT);
+    const float VerticalSpeed   = FMath::Lerp(500.f, 8000.f, HeightT);
+
+    LaunchVelocity = FlatForward * HorizontalSpeed + Up * VerticalSpeed;
     bLaunching = true;
 
-    UE_LOG(LogTemp, Warning, TEXT("EarthLaunch: Could not apply launch (no sim physics root, no FloatingPawnMovement). Hook ApplyLaunch to your movement system."));
+    UE_LOG(LogTemp, Warning,
+        TEXT("Launch HeightT=%.2f PowerT=%.2f HSpeed=%.1f VSpeed=%.1f Vel=%s"),
+        HeightT,
+        PowerT,
+        HorizontalSpeed,
+        VerticalSpeed,
+        *LaunchVelocity.ToString()
+    );
 }
 
 void UEarthLaunchAbilityComponent::SpawnLaunchPillar(const FVector& GroundLoc, const FRotator& FacingRot, const FVector& LaunchDir)
@@ -313,5 +473,11 @@ void UEarthLaunchAbilityComponent::SpawnLaunchPillar(const FVector& GroundLoc, c
     ALaunchPillar* Pillar = GetWorld()->SpawnActor<ALaunchPillar>(PillarClass, SpawnLoc, DirRot, Params);
     if (!Pillar) return;
     
-    Pillar->InitLaunch(LaunchDir);
+    AActor* Owner = GetOwner();
+    const USceneComponent* Ref = (Owner && ForwardComp) ? ForwardComp : (Owner ? Owner->GetRootComponent() : nullptr);
+    const FVector Fwd = Ref ? Ref->GetForwardVector().GetSafeNormal() : FVector::ForwardVector;
+    
+    const FVector PillarDir = (-Fwd + FVector::UpVector).GetSafeNormal();
+
+    Pillar->InitLaunch(PillarDir);
 }

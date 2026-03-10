@@ -199,7 +199,6 @@ void UEarthWallAbilityComponent::SpawnWall(const FVector& GroundLoc, const FRota
 
 void UEarthWallAbilityComponent::CleanupWalls()
 {
-	// Remove destroyed entries
 	SpawnedWalls.RemoveAll([](const TWeakObjectPtr<ARisingWall>& W)
 	{
 		return !W.IsValid();

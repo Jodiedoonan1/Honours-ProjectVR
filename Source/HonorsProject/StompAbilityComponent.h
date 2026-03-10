@@ -26,7 +26,10 @@ struct FFootStompData
     EFootState State = EFootState::Grounded;
     float RestZ = 0.0f;
     float LastZ = 0.0f;
+	float MaxAboveRest = 0.f;
     float VerticalSpeed = 0.0f;
+	float PeakDownSpeedNearGround = 0.0f;
+	bool bEnteredNearGroundWindow = false;
     float CooldownRemaining = 0.0f;
 };
 
@@ -62,10 +65,10 @@ public:
 	USceneComponent* HeadComponent = nullptr;
 	
 	UPROPERTY(EditAnywhere, Category="Stomp|Targeting")
-	float TargetRockRange = 250.f;
+	float TargetRockRange = 700.f;
 
 	UPROPERTY(EditAnywhere, Category="Stomp|Targeting")
-	float TargetRockSphereRadius = 12.f; 
+	float TargetRockSphereRadius = 30.f; 
 
 	UPROPERTY(EditAnywhere, Category="Stomp|Targeting")
 	TEnumAsByte<ECollisionChannel> TargetTraceChannel = ECC_Visibility;
@@ -74,19 +77,19 @@ public:
 	TSubclassOf<AActor> RockClass;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Tuning")
-	float LiftThreshold = 18.00f;
+	float LiftThreshold = 22.00f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Tuning")
 	float LandTolerance = 8.00f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Tuning")
-	float MinDownSpeed = 120.0f;
+	float MinDownSpeed = 150.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Tuning")
 	float Cooldown = 0.35f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Spawn")
-	float SpawnForwardDistance = 70.0f;
+	float SpawnForwardDistance = 80.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Spawn")
 	float SpawnDownOffset = 30.0f;
@@ -96,6 +99,31 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Spawn")
 	float TraceDown = 200.0f;
+	
+	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
+	float MinRockScale = 0.06f;
+
+	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
+	float MaxRockScale = 0.3f;
+	
+	UPROPERTY(EditAnywhere, Category="Stomp|Size")
+	float SizeCurvePower = 1.7f;
+	
+	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
+	float MaxLiftForFullSize = 70.0f; 
+	
+	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
+	float MaxDownSpeedForFullSize = 600.0f; 
+
+	// How much lift vs stomp speed matters
+	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
+	float LiftWeight = 0.6f;
+
+	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
+	float SpeedWeight = 0.4f;
+	
+	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
+	float NearGroundWindow = 25.f;
 	
 	UFUNCTION(BlueprintCallable, Category="Stomp")
 	void Calibrate();
@@ -108,5 +136,5 @@ private:
 
 	void UpdateFoot(USceneComponent* Foot, FFootStompData& Data, float DeltaTime);
 	bool GetGroundInFront(FVector& OutLoc, FRotator& OutRot) const;
-	void SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength) const;
+	void SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength, float RockScale) const;
 };

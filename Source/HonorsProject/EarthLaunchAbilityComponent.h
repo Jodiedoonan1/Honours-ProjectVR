@@ -45,22 +45,19 @@ public:
 	TSubclassOf<ALaunchPillar> PillarClass;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Spawn")
-	float SpawnBackwardDistance = 20.0f;
+	float SpawnBackwardDistance = 0.0f; // This was 160
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Spawn")
-	float SpawnDownOffset = 1.0f;
+	float SpawnDownOffset = 70.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Spawn")
 	float TraceUp = 50.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Spawn")
 	float TraceDown = 250.0f;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Launch")
-	float LaunchStrength = 1800.0f; // impulse/vel scale for pawn root, tune
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Launch")
-	float LaunchUpScaleMin = 0.4f; // how much up component at LaunchUpMin
+	float LaunchUpScaleMin = 0.4f; 
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Launch")
 	float LaunchUpScaleMax = 1.2f;
@@ -81,7 +78,7 @@ public:
 	float LaunchUpMin = 0.20f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Tuning")
-	float LaunchUpMax = 0.80f;
+	float LaunchUpMax = 1.5f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Tuning")
 	float Cooldown = 0.35f;
@@ -111,7 +108,7 @@ public:
 	float MaxHandSpeedForFullLaunch = 250.f;
 	
 	UFUNCTION(BlueprintCallable, Category="EarthLaunch|Launch")
-	float ComputeLaunchSpeedFromHands(const FVector& LaunchDir) const;
+	float ComputeLaunchPowerT() const;
 	
 	bool bLaunching = false;
 	FVector LaunchVelocity = FVector::ZeroVector;
@@ -140,6 +137,6 @@ private:
 	
 	bool TryGetGroundPoint(FVector& OutLoc, FRotator& OutRot) const;
 	FVector ComputeLaunchDirection(float AvgUpDot) const;
-	void ApplyLaunch(const FVector& LaunchDir, float LaunchSpeed);
+	void ApplyLaunch(float AvgUpDot);
 	void SpawnLaunchPillar(const FVector& GroundLoc, const FRotator& FacingRot, const FVector& LaunchDir);
 };

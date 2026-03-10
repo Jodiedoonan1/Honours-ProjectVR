@@ -194,7 +194,7 @@ void ARisingWall::OnMeshBeginOverlap(
 		}
 	}
 
-	// If velocity is unreliable fallback
+	// If velocity is unreliable
 	if (HandVel.SizeSquared() < 25.0f)
 	{
 		HandVel = (GetActorLocation() - OtherComp->GetComponentLocation()) * 10.0f;
@@ -202,8 +202,7 @@ void ARisingWall::OnMeshBeginOverlap(
 
 	FVector Dir = HandVel.GetSafeNormal();
 	if (Dir.IsNearlyZero()) return;
-
-	// Turn physics on at the moment of impact
+	
 	Mesh->SetSimulatePhysics(true);
 	
 	const FVector WallVel = Mesh->GetPhysicsLinearVelocity();
@@ -223,8 +222,7 @@ void ARisingWall::OnMeshBeginOverlap(
 	{
 		DesiredDeltaV *= 2;
 	}
-
-	// Convert to impulse 
+	
 	const float	WallMassKg = Mesh->GetMass();
 	const float ImpulseMag = WallMassKg * DesiredDeltaV * 6;
 	
@@ -239,7 +237,7 @@ void ARisingWall::OnMeshBeginOverlap(
 	DesiredDeltaV
 );
 
-	// Cooldown so it doesn’t spam impulses each frame while overlapping
+	// Cooldown 
 	bCanBePunched = false;
 	GetWorldTimerManager().SetTimer(
 		PunchCooldownTimer,

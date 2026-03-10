@@ -26,6 +26,11 @@ void UStompAbilityComponent::BeginPlay()
 	
 }
 
+static const TCHAR* FootSideName(const FFootStompData& Data, const FFootStompData& LeftData)
+{
+	return (&Data == &LeftData) ? TEXT("Left") : TEXT("Right");
+}
+
 
 // Called every frame
 void UStompAbilityComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -73,37 +78,107 @@ void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& D
 	Data.VerticalSpeed = (CurrentZ - Data.LastZ) / FMath::Max(DeltaTime, KINDA_SMALL_NUMBER);
 
 	const float AboveRest = CurrentZ - Data.RestZ;
+	
+	static float DebugAccumulator = 0.f;
+	DebugAccumulator += DeltaTime;
 
+	if (DebugAccumulator >= 0.10f)
+	{
+		DebugAccumulator = 0.f;
+
+		const TCHAR* Side = (Foot == FootLeft) ? TEXT("Left") : TEXT("Right");
+
+		const TCHAR* StateStr =
+			(Data.State == EFootState::Grounded) ? TEXT("Grounded") :
+			(Data.State == EFootState::Lifted)   ? TEXT("Lifted")   :
+			(Data.State == EFootState::Falling)  ? TEXT("Falling")  :
+			(Data.State == EFootState::Cooldown) ? TEXT("Cooldown") : TEXT("Unknown");
+		
+	}
+	
 	switch (Data.State)
 	{
 	case EFootState::Grounded:
 		if (AboveRest >= LiftThreshold)
 		{
 			Data.State = EFootState::Lifted;
+			Data.MaxAboveRest = AboveRest;
 		}
 		break;
 
 	case EFootState::Lifted:
+		Data.MaxAboveRest = FMath::Max(Data.MaxAboveRest, AboveRest);
 		if (Data.VerticalSpeed < -10.f)
 		{
 			Data.State = EFootState::Falling;
+			
+			Data.PeakDownSpeedNearGround = 0.0f;
+			Data.bEnteredNearGroundWindow = false;
 		}
 		break;
 
 	case EFootState::Falling:
 		{
+			Data.MaxAboveRest = FMath::Max(Data.MaxAboveRest, AboveRest);
 			const bool bLanded = AboveRest <= LandTolerance;
-			const bool bFast = Data.VerticalSpeed <= -MinDownSpeed;
-
-			if (bLanded && bFast)
+			const bool bFastNearGround = Data.bEnteredNearGroundWindow && (Data.PeakDownSpeedNearGround <= -MinDownSpeed);
+			
+			if (AboveRest <= NearGroundWindow)
 			{
-				const float StompStrength = FMath::Abs(Data.VerticalSpeed);
+				Data.bEnteredNearGroundWindow = true;
+				
+				if (Data.PeakDownSpeedNearGround == 0.0f)
+				{
+					Data.PeakDownSpeedNearGround = Data.VerticalSpeed;
+				}
+				else
+				{
+					Data.PeakDownSpeedNearGround = FMath::Min(Data.PeakDownSpeedNearGround, Data.VerticalSpeed);
+				}
+			}
+
+			if (bLanded && bFastNearGround)
+			{
+				const float UsedSpeed = Data.PeakDownSpeedNearGround;
+				const float StompStrength = FMath::Abs(UsedSpeed);
+				const float LiftT  = FMath::Clamp(Data.MaxAboveRest / FMath::Max(MaxLiftForFullSize, 1.f), 0.f, 1.f);
+				const float SpeedT = FMath::Clamp(
+			(StompStrength - MinDownSpeed) / FMath::Max(MaxDownSpeedForFullSize - MinDownSpeed, 1.f),
+			0.0f, 1.0f);
+				const float SizeT = FMath::Clamp(LiftT * LiftWeight + SpeedT * SpeedWeight, 0.f, 1.f);
+				const float ShapedT = FMath::Pow(SizeT, SizeCurvePower);
+				const float RockScale = FMath::Lerp(MinRockScale, MaxRockScale, ShapedT);
+				
+				const TCHAR* Side = (Foot == FootLeft) ? TEXT("Left") : TEXT("Right");
+
+				UE_LOG(LogTemp, Warning,
+					TEXT("[Stomp TRIGGER][%s] Above=%.1f MaxAbove=%.1f  VSpeed=%.1f VPeakNear=%.1f Strength=%.1f  bLanded=%d bFast=%d | LiftT=%.2f SpeedT=%.2f SizeT=%.2f ShapedT=%.2f RockScale=%.2f | MinDown=%.1f MaxDownFull=%.1f MaxLiftFull=%.1f"),
+					Side,
+					AboveRest,
+					Data.MaxAboveRest,
+					Data.VerticalSpeed,
+					Data.PeakDownSpeedNearGround,
+					StompStrength,
+					bLanded ? 1 : 0,
+					bFastNearGround ? 1 : 0,
+					LiftT,
+					SpeedT,
+					SizeT,
+					ShapedT,
+					RockScale,
+					MinDownSpeed,
+					MaxDownSpeedForFullSize,
+					MaxLiftForFullSize
+				);
+				
 				FVector GroundLoc;
 				FRotator GroundRot;
 				FHitResult LookHit;
 				if (ARisingRock* ExistingRock = FindLookedAtRock(LookHit))
 				{
 					AActor* Owner = GetOwner();
+					//ExistingRock->SetActorScale3D(FVector(RockScale));
+					//ExistingRock->SetSizeScale(RockScale);
 					float HeadZ = 0.f;
 					if (HeadComponent) HeadZ = HeadComponent->GetComponentLocation().Z;
 					else if (Owner)   HeadZ = Owner->GetActorLocation().Z + 160.f;
@@ -115,7 +190,7 @@ void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& D
 				{
 					if (GetGroundInFront(GroundLoc, GroundRot))
 					{
-						SpawnRock(GroundLoc, GroundRot, StompStrength);
+						SpawnRock(GroundLoc, GroundRot, StompStrength, RockScale);
 					}
 				}
 
@@ -149,8 +224,7 @@ ARisingRock* UStompAbilityComponent::FindLookedAtRock(FHitResult& OutHit) const
 
 	TArray<AActor*> Ignore;
 	if (AActor* Owner = GetOwner()) Ignore.Add(Owner);
-
-	// Sphere trace is way more reliable than a thin line in VR
+	
 	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(
 		GetWorld(),
 		Start,
@@ -206,7 +280,7 @@ bool UStompAbilityComponent::GetGroundInFront(FVector& OutLoc, FRotator& OutRot)
 	return true;
 }
 
-void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength) const
+void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength, float RockScale) const
 {
 	if (!RockClass || !GetWorld()) return;
 
@@ -215,11 +289,13 @@ void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator&
 
     FActorSpawnParameters Params;
     Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-    // Spawn as ARisingRock
+	
     ARisingRock* Rock = GetWorld()->SpawnActor<ARisingRock>(RockClass, SpawnLoc, Rot, Params);
     if (!Rock) return;
-
+	
+	Rock->SetActorScale3D(FVector(RockScale));
+	
+	Rock->SetSizeScale(RockScale);
     
     AActor* Owner = GetOwner();
     float HeadZ = 0.f;

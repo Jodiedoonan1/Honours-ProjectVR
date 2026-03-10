@@ -54,8 +54,9 @@ void ALaunchPillar::BeginRise()
 	Elapsed = 0.f;
 	bMoving = true;
 
-	// Disable collision while moving
 	SetCollisionEnabled(false);
+	
+	SetLifeSpan(LifeAfterRise);
 }
 
 // Called every frame
@@ -88,8 +89,7 @@ void ALaunchPillar::Tick(float DeltaTime)
 
 	Elapsed += DeltaTime;
 	const float Alpha = FMath::Clamp(Elapsed / RiseTime, 0.f, 1.f);
-
-	// Smoothstep easing like your wall
+	
 	const float Smooth = Alpha * Alpha * (3.f - 2.f * Alpha);
 
 	SetActorLocation(FMath::Lerp(MoveStart, MoveEnd, Smooth));
