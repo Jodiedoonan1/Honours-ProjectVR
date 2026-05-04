@@ -6,6 +6,7 @@
 #include "Components/ActorComponent.h"
 #include "Engine/EngineTypes.h"
 #include "RisingRock.h"
+#include "RockTypes.h"
 #include "StompAbilityComponent.generated.h"
 class UMotionControllerComponent;
 
@@ -83,7 +84,7 @@ public:
 	float LandTolerance = 8.00f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Tuning")
-	float MinDownSpeed = 150.0f;
+	float MinDownSpeed = 160.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Tuning")
 	float Cooldown = 0.35f;
@@ -92,7 +93,7 @@ public:
 	float SpawnForwardDistance = 80.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Spawn")
-	float SpawnDownOffset = 30.0f;
+	float SpawnDownOffset = 40.0f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Spawn")
 	float TraceUp = 50.0f;
@@ -100,14 +101,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp|Spawn")
 	float TraceDown = 200.0f;
 	
+	UPROPERTY(EditAnywhere, Category = "Stomp Spawn")
+	float SmallRockSpawnDistance = 60.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Stomp Spawn")
+	float LargeRockSpawnDistance = 100.0f;
+	
+	UPROPERTY(EditAnywhere, Category = "Stomp Spawn")
+	float StompLockedDuration = 0.5f;
+	
+	UPROPERTY(EditAnywhere, Category = "Stomp Spawn")
+	float StompLockedRemaining = 0.0f;
+	
 	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
 	float MinRockScale = 0.06f;
 
 	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
-	float MaxRockScale = 0.3f;
+	float MaxRockScale = 1.0f;
 	
 	UPROPERTY(EditAnywhere, Category="Stomp|Size")
-	float SizeCurvePower = 1.7f;
+	float SizeCurvePower = 2.0f;
 	
 	UPROPERTY(EditAnywhere, Category="Stomp|RockSize")
 	float MaxLiftForFullSize = 70.0f; 
@@ -128,6 +141,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Stomp")
 	void Calibrate();
 	
+	UFUNCTION(BlueprintCallable, Category="Stomp")
+	void CantStomp();
+	
 	ARisingRock* FindLookedAtRock(FHitResult& OutHit) const;
 	
 private:
@@ -135,6 +151,7 @@ private:
 	FFootStompData Right;
 
 	void UpdateFoot(USceneComponent* Foot, FFootStompData& Data, float DeltaTime);
-	bool GetGroundInFront(FVector& OutLoc, FRotator& OutRot) const;
-	void SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength, float RockScale) const;
+	bool GetGroundInFront(FVector& OutLoc, FRotator& OutRot, float RockScale) const;
+	ARisingRock* SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength, float RockScale) const;
+	ERockSize GetRockSizeFromScale(float RockScale) const;
 };

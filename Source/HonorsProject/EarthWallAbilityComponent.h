@@ -58,7 +58,7 @@ public:
 	float Cooldown = 0.6f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthWall|Spawn")
-	float SpawnForwardDistance = 120.f;
+	float SpawnForwardDistance = 150.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthWall|Spawn")
 	float SpawnDownOffset = 40.f;

@@ -2,8 +2,12 @@
 
 
 #include "RisingRock.h"
+
+#include "StompAbilityComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "TrackedVelocity.h"
+#include "Kismet/GameplayStatics.h"
+#include "TaskManager.h"
 #include "TimerManager.h"
 
 // Sets default values
@@ -12,12 +16,13 @@ ARisingRock::ARisingRock()
 	PrimaryActorTick.bCanEverTick = true;
 	
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
-	SetRootComponent(Mesh);
+	RootComponent = Mesh;
 	
 	Mesh->SetSimulatePhysics(true);
 	Mesh->SetEnableGravity(true);
 	
 	Mesh->SetGenerateOverlapEvents(true);
+	Mesh->SetNotifyRigidBodyCollision(true);
 }
 
 // Called when the game starts or when spawned
@@ -32,6 +37,8 @@ void ARisingRock::BeginPlay()
         Mesh->SetGenerateOverlapEvents(true);
 		
         Mesh->OnComponentBeginOverlap.AddDynamic(this, &ARisingRock::OnMeshBeginOverlap);
+		
+		Mesh->OnComponentHit.AddDynamic(this, &ARisingRock::OnMeshHit);
     }
 }
 
@@ -53,6 +60,7 @@ void ARisingRock::Tick(float DeltaTime)
         {
             V.Z = 0.0f;
             Mesh->SetPhysicsLinearVelocity(V);
+        	bCanBreak = true;
         }
     }
 }
@@ -100,6 +108,29 @@ void ARisingRock::EnableCCD()
 	}
 }
 
+void ARisingRock::RockBreak()
+{
+	if (BrokenRockClass && GetWorld())
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		AActor* BrokenRock = GetWorld()->SpawnActor<AActor>(
+			BrokenRockClass,
+			GetActorLocation(),
+			GetActorRotation(),
+			Params
+		);
+
+		if (BrokenRock)
+		{
+			BrokenRock->SetActorScale3D(GetActorScale3D());
+		}
+	}
+
+	Destroy();
+}
+
 void ARisingRock::OnMeshBeginOverlap(
 	UPrimitiveComponent* OverlappedComp,
 	AActor* OtherActor,
@@ -116,6 +147,8 @@ void ARisingRock::OnMeshBeginOverlap(
 	
 	const bool bIsHand = OtherComp->ComponentHasTag(TEXT("VRHand"));
 	const bool bIsFoot = OtherComp->ComponentHasTag(TEXT("VRFoot"));
+	
+	UStompAbilityComponent* StompAbility = Cast<UStompAbilityComponent>(GetOwner());
 	
 	if (!bIsHand && !bIsFoot)
 		return;
@@ -177,6 +210,31 @@ void ARisingRock::OnMeshBeginOverlap(
 	const float ClosingSpeed = FVector::DotProduct(RelVel, Dir); 
 	if (ClosingSpeed < PunchMinSpeed) return;
 	
+	ATaskManager* TaskManager = Cast<ATaskManager>(
+	UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
+	
+	//StompAbility->CantStomp();
+	
+	if (TaskManager && TaskManager->IsExpectingPunchRock())
+	{
+		const bool bWasCorrect = bIsHand;
+		
+		if (bWasCorrect)
+		{
+			TaskManager->NotifyPunchedRock();
+		}
+	}
+	
+	if (TaskManager && TaskManager->IsExpectingKickRock())
+	{
+		const bool bWasCorrect = bIsFoot;
+		
+		if (bWasCorrect)
+		{
+			TaskManager->NotifyKickedRock();
+		}
+	}
+	
 	float Alpha = (ClosingSpeed - PunchMinSpeed) / FMath::Max(PunchMaxSpeed - PunchMinSpeed, 1.f);
 	Alpha = FMath::Clamp(Alpha, 0.f, 1.f);
 	
@@ -194,7 +252,6 @@ void ARisingRock::OnMeshBeginOverlap(
 	const float ImpulseMag = RockMassKg * DesiredDeltaV * 2;
 	
 	Mesh->AddImpulse(Dir * ImpulseMag, NAME_None, false);
-	
 	Mesh->SetEnableGravity(true);
 	
 	UE_LOG(LogTemp, Warning, TEXT("ClosingSpeed=%.0f  AlphaRaw=%.2f  Alpha=%.2f  DesiredDV=%.0f"),
@@ -203,7 +260,7 @@ void ARisingRock::OnMeshBeginOverlap(
 	Alpha,
 	DesiredDeltaV
 );
-
+	
 	// Cooldown 
 	bCanBePunched = false;
 	GetWorldTimerManager().SetTimer(
@@ -213,6 +270,79 @@ void ARisingRock::OnMeshBeginOverlap(
 			bCanBePunched = true;
 		},
 		PunchCooldown,
+		false
+	);
+}
+
+void ARisingRock::OnMeshHit(
+	UPrimitiveComponent* HitComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	FVector NormalImpulse,
+	const FHitResult& Hit
+)
+{
+	if (!Mesh || !bCanBreak)
+		return;
+
+	if (!OtherActor || OtherActor == this)
+		return;
+	
+	if (OtherComp && (OtherComp->ComponentHasTag(TEXT("VRHand")) || OtherComp->ComponentHasTag(TEXT("VRFoot"))))
+		return;
+	
+	if (OtherComp && (OtherComp->ComponentHasTag(TEXT("BrokenRock"))))
+		return;
+
+	const float ImpactSpeed = Mesh->GetPhysicsLinearVelocity().Size();
+
+	if (ImpactSpeed < BreakImpactSpeed)
+		return;
+
+	bCanBreak = false;
+	RockBreak();
+}
+
+void ARisingRock::ChangeRockColour()
+{
+	const FLinearColor FeedbackColor =
+		bPendingTaskFeedbackCorrect ? CorrectFeedbackColor : WrongFeedbackColor;
+
+	DynamicRockMaterial->SetVectorParameterValue(TintParameterName, FeedbackColor);
+}
+
+void ARisingRock::ApplyTaskFeedback(bool bWasCorrect)
+{
+	if (!Mesh)
+	{
+		return;
+	}
+
+	if (!DynamicRockMaterial)
+	{
+		DynamicRockMaterial = Mesh->CreateAndSetMaterialInstanceDynamic(0);
+	}
+	
+	bPendingTaskFeedbackCorrect = bWasCorrect;
+
+	if (DynamicRockMaterial)
+	{
+		GetWorldTimerManager().ClearTimer(FeedbackColourTimer);
+		GetWorldTimerManager().SetTimer(
+			FeedbackColourTimer,
+			this,
+			&ARisingRock::ChangeRockColour,
+			0.5,
+			false
+		);
+	}
+
+	GetWorldTimerManager().ClearTimer(FeedbackBreakTimer);
+	GetWorldTimerManager().SetTimer(
+		FeedbackBreakTimer,
+		this,
+		&ARisingRock::RockBreak,
+		FeedbackBreakDelay,
 		false
 	);
 }

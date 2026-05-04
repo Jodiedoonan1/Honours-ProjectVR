@@ -2,6 +2,8 @@
 
 
 #include "HandRaiseRockAbilityComponent.h"
+#include "TaskManager.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 UHandRaiseRockAbilityComponent::UHandRaiseRockAbilityComponent()
@@ -55,7 +57,9 @@ void UHandRaiseRockAbilityComponent::UpdateHand(
 )
 {
     if (!HandComp) return;
-
+	
+	ATaskManager* TaskManager = Cast<ATaskManager>(UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
+	
     // If trigger not held reset this hand 
     if (!bTriggerHeld || !bButtonHeld)
     {
@@ -135,6 +139,11 @@ void UHandRaiseRockAbilityComponent::UpdateHand(
         	if (ARisingRock* Rock = FindLookedAtRock(Hit))
         	{
         		Rock->LaunchFromStomp(Strength, HeadZ);
+        		
+        		if (TaskManager->IsExpectingRaisedExistingRock())
+        		{
+        			TaskManager->NotifyRaisedExistingRock();
+        		}
         	}
         	else
         	{
@@ -262,6 +271,21 @@ ARisingRock* UHandRaiseRockAbilityComponent::SpawnRock(
 
 	ARisingRock* Rock = GetWorld()->SpawnActor<ARisingRock>(RockClass, SpawnLoc, Rot, Params);
 	if (!Rock) return nullptr;
+	
+	ATaskManager* TaskManager = Cast<ATaskManager>(
+	UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
+
+	if (Rock && TaskManager->ShouldUseRockColourFeedback())
+	{
+		const bool bWasCorrect = TaskManager->IsExpectingHandRock();
+
+		Rock->ApplyTaskFeedback(bWasCorrect);
+
+		if (bWasCorrect)
+		{
+			TaskManager->NotifyHandRockCreated();
+		}
+	}
 
 	Rock->LaunchFromStomp(Strength, HeadZ);
 	return Rock;

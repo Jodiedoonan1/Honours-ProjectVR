@@ -3,6 +3,8 @@
 
 #include "RisingWall.h"
 #include "TrackedVelocity.h"
+#include "TaskManager.h"
+#include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
 ARisingWall::ARisingWall()
@@ -16,6 +18,7 @@ ARisingWall::ARisingWall()
 	Mesh->SetEnableGravity(false);
 	
 	Mesh->SetGenerateOverlapEvents(true);
+	Mesh->SetNotifyRigidBodyCollision(true);
 }
 
 void ARisingWall::BeginPlay()
@@ -29,6 +32,8 @@ void ARisingWall::BeginPlay()
 		Mesh->SetGenerateOverlapEvents(true);
 		
 		Mesh->OnComponentBeginOverlap.AddDynamic(this, &ARisingWall::OnMeshBeginOverlap);
+		
+		Mesh->OnComponentHit.AddDynamic(this, &ARisingWall::OnMeshHit);
 	}
 }
 
@@ -48,6 +53,9 @@ void ARisingWall::StartLoweringAndDestroy()
 	{
 		return;
 	}
+	
+	ATaskManager* TaskManager = Cast<ATaskManager>(UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
+	
 	bLowering = true;
 	const FVector StartLoc = GetActorLocation();
 	const FVector Target = StartLoc - FVector(0.f, 0.f, RiseHeight);
@@ -55,6 +63,10 @@ void ARisingWall::StartLoweringAndDestroy()
 	SetCollisionEnabled(false);
 
 	BeginMoveTo(Target, true);
+	if (TaskManager->IsExpectingWallLowered())
+	{
+		TaskManager->NotifyWallLowered();
+	}
 }
 
 void ARisingWall::BeginMoveTo(const FVector& Target, bool bDestroyAfter)
@@ -83,6 +95,8 @@ void ARisingWall::Tick(float DeltaTime)
 		if (!bDestroyWhenDone && bEnableCollisionWhenFinished)
 		{
 			SetCollisionEnabled(true);
+			Mesh->SetSimulatePhysics(true);
+			Mesh->BodyInstance.bLockZTranslation = true;
 		}
 
 		if (bDestroyWhenDone)
@@ -108,10 +122,12 @@ void ARisingWall::Tick(float DeltaTime)
 		SetActorLocation(MoveEnd);
 		
 		bMoving = false;
+		bCanBreak = true;
 
 		if (!bDestroyWhenDone && bEnableCollisionWhenFinished)
 		{
 			SetCollisionEnabled(true);
+			Mesh->BodyInstance.bLockZTranslation = true;
 		}
 
 		if (bDestroyWhenDone)
@@ -132,6 +148,29 @@ void ARisingWall::SetCollisionEnabled(bool bEnabled)
 	Mesh->SetCollisionEnabled(
 		bEnabled ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision
 	);
+}
+
+void ARisingWall::WallBreak()
+{
+	if (BrokenWallClass && GetWorld())
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		AActor* BrokenWall = GetWorld()->SpawnActor<AActor>(
+			BrokenWallClass,
+			GetActorLocation(),
+			GetActorRotation(),
+			Params
+		);
+
+		if (BrokenWall)
+		{
+			BrokenWall->SetActorScale3D(GetActorScale3D());
+		}
+	}
+
+	Destroy();
 }
 
 void ARisingWall::OnMeshBeginOverlap(
@@ -201,9 +240,11 @@ void ARisingWall::OnMeshBeginOverlap(
 	}
 
 	FVector Dir = HandVel.GetSafeNormal();
+	Dir.Z = 0.0f;
 	if (Dir.IsNearlyZero()) return;
 	
 	Mesh->SetSimulatePhysics(true);
+	Mesh->BodyInstance.bLockZTranslation = true;
 	
 	const FVector WallVel = Mesh->GetPhysicsLinearVelocity();
 	const FVector RelVel  = HandVel - WallVel;
@@ -224,11 +265,18 @@ void ARisingWall::OnMeshBeginOverlap(
 	}
 	
 	const float	WallMassKg = Mesh->GetMass();
-	const float ImpulseMag = WallMassKg * DesiredDeltaV * 6;
+	const float ImpulseMag = WallMassKg * DesiredDeltaV * 8;
 	
 	Mesh->AddImpulse(Dir * ImpulseMag, NAME_None, false);
 	
 	Mesh->SetEnableGravity(true);
+	
+	ATaskManager* TaskManager = Cast<ATaskManager>(UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
+	
+	if (TaskManager->IsExpectingWallStrike())
+	{
+		TaskManager->NotifyWallStrike();
+	}
 	
 	UE_LOG(LogTemp, Warning, TEXT("ClosingSpeed=%.0f  AlphaRaw=%.2f  Alpha=%.2f  DesiredDV=%.0f"),
 	ClosingSpeed,
@@ -248,4 +296,33 @@ void ARisingWall::OnMeshBeginOverlap(
 		PunchCooldown,
 		false
 	);
+}
+
+void ARisingWall::OnMeshHit(
+	UPrimitiveComponent* HitComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	FVector NormalImpulse,
+	const FHitResult& Hit
+)
+{
+	if (!Mesh || !bCanBreak)
+		return;
+
+	if (!OtherActor || OtherActor == this)
+		return;
+	
+	if (OtherComp && (OtherComp->ComponentHasTag(TEXT("VRHand")) || OtherComp->ComponentHasTag(TEXT("VRFoot")) || OtherComp->ComponentHasTag(TEXT("Floor"))))
+		return;
+
+	const float ImpactSpeed = Mesh->GetPhysicsLinearVelocity().Size();
+
+	//if (ImpactSpeed < BreakImpactSpeed)
+	//	return;
+
+	if (ImpactSpeed >= BreakImpactSpeed || OtherComp->ComponentHasTag(TEXT("IncomingRock")))
+	{
+		bCanBreak = false;
+		WallBreak();
+	}
 }

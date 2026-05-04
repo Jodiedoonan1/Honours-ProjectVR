@@ -2,6 +2,10 @@
 
 
 #include "StompAbilityComponent.h"
+
+#include "NetworkReplayStreaming.h"
+#include "TaskManager.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 // Sets default values for this component's properties
@@ -37,6 +41,10 @@ void UStompAbilityComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
+	if (StompLockedRemaining > 0.0f)
+	{
+		StompLockedRemaining = StompLockedRemaining - DeltaTime;
+	}
 	UpdateFoot(FootLeft, Left, DeltaTime);
 	UpdateFoot(FootRight, Right, DeltaTime);
 }
@@ -64,6 +72,14 @@ void UStompAbilityComponent::Calibrate()
 void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& Data, float DeltaTime)
 {
 	if (!Foot || !GetWorld()) return;
+	
+	if (StompLockedRemaining > 0.0f)
+	{
+		Data.LastZ = Foot->GetComponentLocation().Z;
+		return;
+	}
+	
+	ATaskManager* TaskManager = Cast<ATaskManager>(UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
 
 	if (Data.State == EFootState::Cooldown)
 	{
@@ -177,20 +193,60 @@ void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& D
 				if (ARisingRock* ExistingRock = FindLookedAtRock(LookHit))
 				{
 					AActor* Owner = GetOwner();
-					//ExistingRock->SetActorScale3D(FVector(RockScale));
-					//ExistingRock->SetSizeScale(RockScale);
 					float HeadZ = 0.f;
 					if (HeadComponent) HeadZ = HeadComponent->GetComponentLocation().Z;
 					else if (Owner)   HeadZ = Owner->GetActorLocation().Z + 160.f;
 					else              HeadZ = LookHit.Location.Z + 160.f;
 
 					ExistingRock->LaunchFromStomp(StompStrength, HeadZ);
+					
+					if (TaskManager->IsExpectingRaisedExistingRock())
+					{
+						TaskManager->NotifyRaisedExistingRock();
+					}
 				}
 				else
 				{
-					if (GetGroundInFront(GroundLoc, GroundRot))
+					if (GetGroundInFront(GroundLoc, GroundRot, RockScale))
 					{
-						SpawnRock(GroundLoc, GroundRot, StompStrength, RockScale);
+						ARisingRock* NewRock = SpawnRock(GroundLoc, GroundRot, StompStrength, RockScale);
+
+						if (NewRock)
+						{
+							const ERockSize RockSize = GetRockSizeFromScale(RockScale);
+
+							//ATaskManager* TaskManager = Cast<ATaskManager>(
+							//	UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
+
+							if (TaskManager->ShouldUseRockColourFeedback())
+							{
+								bool bWasCorrect = false;
+								
+								const ERockSize TargetSize = TaskManager->GetCurrentTargetRockSize();
+								
+								if (TaskManager->IsExpectingStompRock())
+								{
+									bWasCorrect = (RockSize == TargetSize);
+								}
+								else
+								{
+									bWasCorrect = false;
+								}
+
+								NewRock->ApplyTaskFeedback(bWasCorrect);
+
+								if (bWasCorrect)
+								{
+									TaskManager->NotifyRockCreated(RockSize);
+								}
+
+								UE_LOG(LogTemp, Warning, TEXT("Rock created. Scale = %.2f, Size = %s, Target = %s, Correct = %s"),
+									RockScale,
+									*UEnum::GetValueAsString(RockSize),
+									*UEnum::GetValueAsString(TargetSize),
+									bWasCorrect ? TEXT("Yes") : TEXT("No"));
+							}
+						}
 					}
 				}
 
@@ -244,7 +300,7 @@ ARisingRock* UStompAbilityComponent::FindLookedAtRock(FHitResult& OutHit) const
 	return Rock;
 }
 
-bool UStompAbilityComponent::GetGroundInFront(FVector& OutLoc, FRotator& OutRot) const
+bool UStompAbilityComponent::GetGroundInFront(FVector& OutLoc, FRotator& OutRot, float RockScale) const
 {
 	AActor* Owner = GetOwner();
 	if (!Owner || !GetWorld()) return false;
@@ -256,7 +312,13 @@ bool UStompAbilityComponent::GetGroundInFront(FVector& OutLoc, FRotator& OutRot)
 	const FRotator Rot = Ref->GetComponentRotation();
 	const FVector Forward = Rot.Vector();
 
-	const FVector TargetXY = Origin + Forward * SpawnForwardDistance;
+	const float Range = FMath::Max(MaxRockScale - MinRockScale, KINDA_SMALL_NUMBER);
+	const float NormalizedScale = FMath::Clamp((RockScale - MinRockScale) / Range, 0.0f, 1.0f);
+
+	// Small rocks closer, large rocks further
+	const float ActualSpawnDistance = FMath::Lerp(SmallRockSpawnDistance, LargeRockSpawnDistance, NormalizedScale);
+
+	const FVector TargetXY = Origin + Forward * ActualSpawnDistance;
 
 	const FVector Start = TargetXY + FVector(0,0,TraceUp);
 	const FVector End   = TargetXY - FVector(0,0,TraceDown);
@@ -280,9 +342,14 @@ bool UStompAbilityComponent::GetGroundInFront(FVector& OutLoc, FRotator& OutRot)
 	return true;
 }
 
-void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength, float RockScale) const
+void UStompAbilityComponent::CantStomp()
 {
-	if (!RockClass || !GetWorld()) return;
+	StompLockedRemaining = StompLockedDuration;
+}
+
+ARisingRock* UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator& Rot, float StompStrength, float RockScale) const
+{
+	if (!RockClass || !GetWorld()) return nullptr;
 
     FVector SpawnLoc = GroundLoc;
     SpawnLoc.Z -= SpawnDownOffset;
@@ -291,7 +358,7 @@ void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator&
     Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	
     ARisingRock* Rock = GetWorld()->SpawnActor<ARisingRock>(RockClass, SpawnLoc, Rot, Params);
-    if (!Rock) return;
+    if (!Rock) return nullptr;
 	
 	Rock->SetActorScale3D(FVector(RockScale));
 	
@@ -314,4 +381,23 @@ void UStompAbilityComponent::SpawnRock(const FVector& GroundLoc, const FRotator&
     }
 	
     Rock->LaunchFromStomp(StompStrength, HeadZ);
+	
+	return Rock;
+}
+
+ERockSize UStompAbilityComponent::GetRockSizeFromScale(float RockScale) const
+{
+	const float Range = FMath::Max(MaxRockScale - MinRockScale, KINDA_SMALL_NUMBER);
+	const float Normalized = FMath::Clamp((RockScale - MinRockScale) / Range, 0.0f, 1.0f);
+
+	if (Normalized <= 0.33f)
+	{
+		return ERockSize::Small;
+	}
+	else if (Normalized <= 0.66f)
+	{
+		return ERockSize::Medium;
+	}
+
+	return ERockSize::Large;
 }

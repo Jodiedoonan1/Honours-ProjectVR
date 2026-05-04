@@ -33,6 +33,15 @@ public:
 		const FHitResult& SweepResult
 	);
 	
+	UFUNCTION()
+	void OnMeshHit(
+		UPrimitiveComponent* HitComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		FVector NormalImpulse,
+		const FHitResult& Hit
+	);
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* Mesh = nullptr;
 	
@@ -50,6 +59,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category="Wall|Move")
 	void StartLoweringAndDestroy();
+	
+	UFUNCTION()
+	void WallBreak();
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch|Physics")
 	float ArmEffectiveMassKg = 3.25f;
@@ -74,6 +86,15 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch")
 	float PunchCooldown = 0.15f;
+	
+	UPROPERTY(EditAnywhere, Category="Break")
+	TSubclassOf<AActor> BrokenWallClass;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Break")
+	bool bCanBreak = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Break")
+	float BreakImpactSpeed = 300.0f;
 	
 	bool bCanBePunched = true;
 	FTimerHandle PunchCooldownTimer;

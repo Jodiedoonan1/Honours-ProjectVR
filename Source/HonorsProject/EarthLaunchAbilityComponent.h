@@ -41,6 +41,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Tracking")
 	FComponentReference ForwardRef;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Tracking")
+	FComponentReference LeftFootRef;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Tracking")
+	FComponentReference RightFootRef;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Tracking")
+	FComponentReference WaistRef;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthLaunch|Spawn")
 	TSubclassOf<ALaunchPillar> PillarClass;
 	
@@ -114,7 +123,7 @@ public:
 	FVector LaunchVelocity = FVector::ZeroVector;
 
 	UPROPERTY(EditAnywhere, Category="EarthLaunch|Launch")
-	float LaunchGravity = 980.f;
+	float LaunchGravity = 980.0f;
 
 	UPROPERTY(EditAnywhere, Category="EarthLaunch|Launch")
 	float LaunchDrag = 0.0f;
@@ -122,10 +131,26 @@ public:
 	UPROPERTY(EditAnywhere, Category="EarthLaunch|Launch")
 	float GroundFriction = 0.0f;
 	
+	UPROPERTY(EditAnywhere, Category="EarthLaunch|FastFall") // When fast falling starts 
+	float FastFallStart = 10.0f;
+	
+	UPROPERTY(EditAnywhere, Category="EarthLaunch|FastFall") // When at max fast fall
+	float FastFallFull = 30.0f;
+	
+	UPROPERTY(EditAnywhere, Category="EarthLaunch|FastFall")
+	float FastFallGravity = 4000.f;
+	
+	float StandCompression = 0.0f;
+	
+	float GetFastFallT() const;
+	
 private:
 	USceneComponent* LeftHand = nullptr;
 	USceneComponent* RightHand = nullptr;
 	USceneComponent* ForwardComp = nullptr;
+	USceneComponent* WaistComp = nullptr;
+	USceneComponent* LeftFootComp = nullptr;
+	USceneComponent* RightFootComp = nullptr;
 
 	bool bLT = false, bRT = false;
 

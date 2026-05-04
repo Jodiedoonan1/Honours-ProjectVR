@@ -25,8 +25,19 @@ void UEarthLaunchAbilityComponent::BeginPlay()
 	RightHand = Cast<USceneComponent>(RightHandRef.GetComponent(Owner));
 	ForwardComp = Cast<USceneComponent>(ForwardRef.GetComponent(Owner));
     
+    WaistComp     = Cast<USceneComponent>(WaistRef.GetComponent(Owner));
+    LeftFootComp  = Cast<USceneComponent>(LeftFootRef.GetComponent(Owner));
+    RightFootComp = Cast<USceneComponent>(RightFootRef.GetComponent(Owner));
+    
     LeftVel  = Cast<UTrackedVelocity>(LeftVelocityRef.GetComponent(Owner));
     RightVel = Cast<UTrackedVelocity>(RightVelocityRef.GetComponent(Owner));
+    
+    if (WaistComp && LeftFootComp && RightFootComp)
+    {
+        const float FeetZ = 0.5f * (LeftFootComp->GetComponentLocation().Z + RightFootComp->GetComponentLocation().Z);
+        const float WaistZ = WaistComp->GetComponentLocation().Z;
+        StandCompression = WaistZ - FeetZ;
+    }
 }
 
 void UEarthLaunchAbilityComponent::SetTriggersHeld(bool bLeftTrigger, bool bRightTrigger)
@@ -47,7 +58,7 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
     const FQuat CapQuat = Capsule->GetComponentQuat();
 
     // Draw capsule (green)
-    DrawDebugCapsule(
+   /* DrawDebugCapsule(
         GetWorld(),
         CapLoc,
         CapHalf,
@@ -55,10 +66,10 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
         CapQuat,
         FColor::Green,
         false,
-        0.0f,   // 0 = one frame
+        0.0f,   
         0,
         1.5f
-    ); 
+    ); */
 	
 	if (State == EEarthLaunchState::Cooldown)
     {
@@ -75,7 +86,13 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
        // AActor* Owner = GetOwner();
         if (!Owner) return;
 
-        const float GravityThisFrame = (LaunchVelocity.Z > 0.f) ? 1400.f : 2200.f;
+        float GravityThisFrame = (LaunchVelocity.Z > 0.f) ? 1400.f : 2200.f;
+        if (LaunchVelocity.Z < 0.f)
+        {
+            const float FastFallT = GetFastFallT();
+            GravityThisFrame = FMath::Lerp(GravityThisFrame, FastFallGravity, FastFallT);
+        }
+
         LaunchVelocity.Z -= GravityThisFrame * DeltaTime;
         
         if (LaunchDrag > 0.f)
@@ -117,7 +134,7 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
         if (Capsule && GetWorld())
         {
             
-            if (GLaunchDebugAccum == 0.f) // only when we logged above
+            if (GLaunchDebugAccum == 0.0f) // only when we logged above
             {
                 const FVector ActorLoc = Owner->GetActorLocation();
                 const FVector RootLoc  = Owner->GetRootComponent() ? Owner->GetRootComponent()->GetComponentLocation() : FVector::ZeroVector;
@@ -134,13 +151,13 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
             // Draw actor location (white)
             DrawDebugSphere(GetWorld(), Owner->GetActorLocation(), 6.f, 8, FColor::White, false, 0.0f);
 
-            // Draw ForwardComp location (cyan) if it exists
+            // Draw ForwardComp location (cyan) 
             if (ForwardComp)
             {
                 DrawDebugSphere(GetWorld(), ForwardComp->GetComponentLocation(), 6.f, 8, FColor::Cyan, false, 0.0f);
             }
 
-            // If you have a camera component on the pawn, draw it (yellow)
+            // camera component on the pawn (yellow)
             if (UCameraComponent* Cam = Owner->FindComponentByClass<UCameraComponent>())
             {
                 DrawDebugSphere(GetWorld(), Cam->GetComponentLocation(), 6.f, 8, FColor::Yellow, false, 0.0f);
@@ -384,6 +401,27 @@ FVector UEarthLaunchAbilityComponent::ComputeLaunchDirection(float AvgUpDot) con
     return (Fwd + Up * UpScale).GetSafeNormal();
 }
 
+float UEarthLaunchAbilityComponent::GetFastFallT() const
+{
+    if (!WaistComp || !LeftFootComp || !RightFootComp) return 0.f;
+
+    const float FeetZ = 0.5f * (LeftFootComp->GetComponentLocation().Z + RightFootComp->GetComponentLocation().Z);
+    const float WaistZ = WaistComp->GetComponentLocation().Z;
+
+    const float CompressionNow = WaistZ - FeetZ;
+
+    // Positive when crouching lower than baseline
+    const float CrouchAmount = StandCompression - CompressionNow;
+
+    float T = (CrouchAmount - FastFallStart) / FMath::Max(FastFallFull - FastFallStart, 1.f);
+    T = FMath::Clamp(T, 0.f, 1.f);
+
+    // Smooth a bit so it doesn't feel twitchy
+    T = FMath::Pow(T, 0.85f);
+
+    return T;
+}
+
 float UEarthLaunchAbilityComponent::ComputeLaunchPowerT() const
 {
     if (!LeftVel || !RightVel)
@@ -438,8 +476,7 @@ void UEarthLaunchAbilityComponent::ApplyLaunch(float AvgUpDot)
 
     // Distance from cast speed
     const float PowerT = ComputeLaunchPowerT();
-
-    // Tune these ranges
+    
     const float HorizontalSpeed = FMath::Lerp(300.f, 4000.f, PowerT);
     const float VerticalSpeed   = FMath::Lerp(500.f, 8000.f, HeightT);
 

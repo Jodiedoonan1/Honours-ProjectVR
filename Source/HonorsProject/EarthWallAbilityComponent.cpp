@@ -3,6 +3,8 @@
 
 #include "EarthWallAbilityComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "TaskManager.h"
+#include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 
 UEarthWallAbilityComponent::UEarthWallAbilityComponent()
@@ -32,7 +34,7 @@ void UEarthWallAbilityComponent::SetButtonsHeld(bool bLeftSide, bool bRightSide)
 {
 	bLS = bLeftSide; bRS = bRightSide;
 	
-	UE_LOG(LogTemp, Warning, TEXT("EarthWall: SetButtonsHeld called -> bLS=%d bRS=%d"), (int32)bLS, (int32)bRS);
+//	UE_LOG(LogTemp, Warning, TEXT("EarthWall: SetButtonsHeld called -> bLS=%d bRS=%d"), (int32)bLS, (int32)bRS);
 }
 
 void UEarthWallAbilityComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -182,6 +184,8 @@ bool UEarthWallAbilityComponent::TryGetGroundPoint(FVector& OutLoc, FRotator& Ou
 void UEarthWallAbilityComponent::SpawnWall(const FVector& GroundLoc, const FRotator& FacingRot)
 {
 	if (!WallClass || !GetWorld()) return;
+	
+	ATaskManager* TaskManager = Cast<ATaskManager>(UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
 
 	FVector SpawnLoc = GroundLoc;
 	SpawnLoc.Z -= SpawnDownOffset;
@@ -195,6 +199,11 @@ void UEarthWallAbilityComponent::SpawnWall(const FVector& GroundLoc, const FRota
 	SpawnedWalls.Add(Wall);
 	
 	Wall->StartRising();
+	
+	if (TaskManager->IsExpectingWallRaised())
+	{
+		TaskManager->NotifyWallRaised();
+	}
 }
 
 void UEarthWallAbilityComponent::CleanupWalls()
@@ -227,7 +236,7 @@ ARisingWall* UEarthWallAbilityComponent::GetLookedAtWall(float MaxDist) const
 		UEngineTypes::ConvertToTraceType(ECC_Visibility),
 		false,
 		Ignore,
-		EDrawDebugTrace::ForDuration,
+		EDrawDebugTrace::None,
 		Hit,
 		true
 	);

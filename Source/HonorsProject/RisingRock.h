@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "RockTypes.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "RisingRock.generated.h"
 
 UCLASS()
@@ -32,6 +34,18 @@ public:
 		bool bFromSweep,
 		const FHitResult& SweepResult
 	);
+	
+	UFUNCTION()
+	void OnMeshHit(
+		UPrimitiveComponent* HitComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		FVector NormalImpulse,
+		const FHitResult& Hit
+	);
+	
+	UFUNCTION()
+	void ApplyTaskFeedback(bool bWasCorrect);
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Punch|Physics")
 	float ArmEffectiveMassKg = 3.25f;
@@ -66,6 +80,15 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* Mesh = nullptr;
 	
+	UPROPERTY(EditAnywhere, Category="Break")
+	TSubclassOf<AActor> BrokenRockClass;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Break")
+	bool bCanBreak = false;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Break")
+	float BreakImpactSpeed = 300.0f;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stomp")
 	float MinUpImpulse = 600.f;
 
@@ -80,6 +103,26 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Rise")
 	bool bEnableCollision = true;
+	
+	UPROPERTY()
+	UMaterialInstanceDynamic* DynamicRockMaterial = nullptr;
+
+	UPROPERTY(EditAnywhere, Category = "Task Feedback")
+	FName TintParameterName = TEXT("TintColour");
+
+	UPROPERTY(EditAnywhere, Category = "Task Feedback")
+	FLinearColor CorrectFeedbackColor = FLinearColor(0.0f, 1.0f, 0.0f, 0.6f);
+
+	UPROPERTY(EditAnywhere, Category = "Task Feedback")
+	FLinearColor WrongFeedbackColor = FLinearColor(1.0f, 0.0f, 0.0f, 0.6f);
+	
+	bool bPendingTaskFeedbackCorrect = false;
+
+	UPROPERTY(EditAnywhere, Category = "Task Feedback")
+	float FeedbackBreakDelay = 1.0f;
+
+	FTimerHandle FeedbackBreakTimer;
+	FTimerHandle FeedbackColourTimer;
 
 	bool bIsPhysicsActive = false;
 	
@@ -94,6 +137,11 @@ public:
 	
 	UFUNCTION()
 	void EnableCCD();
+	
+	UFUNCTION()
+	void RockBreak();
+	
+	void ChangeRockColour();
 	
 private:
 	bool bHasLaunched = false;
