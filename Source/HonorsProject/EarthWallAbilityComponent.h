@@ -46,8 +46,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthWall|Spawn")
 	TSubclassOf<ARisingWall> WallClass;
-
-	// Tuning
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="EarthWall|Tuning")
 	float DownDotThreshold = 0.6f;
 

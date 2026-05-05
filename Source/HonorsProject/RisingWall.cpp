@@ -317,9 +317,6 @@ void ARisingWall::OnMeshHit(
 
 	const float ImpactSpeed = Mesh->GetPhysicsLinearVelocity().Size();
 
-	//if (ImpactSpeed < BreakImpactSpeed)
-	//	return;
-
 	if (ImpactSpeed >= BreakImpactSpeed || OtherComp->ComponentHasTag(TEXT("IncomingRock")))
 	{
 		bCanBreak = false;

@@ -215,9 +215,6 @@ void UStompAbilityComponent::UpdateFoot(USceneComponent* Foot, FFootStompData& D
 						{
 							const ERockSize RockSize = GetRockSizeFromScale(RockScale);
 
-							//ATaskManager* TaskManager = Cast<ATaskManager>(
-							//	UGameplayStatics::GetActorOfClass(GetWorld(), ATaskManager::StaticClass()));
-
 							if (TaskManager->ShouldUseRockColourFeedback())
 							{
 								bool bWasCorrect = false;

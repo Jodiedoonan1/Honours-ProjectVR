@@ -20,5 +20,6 @@ enum class ETaskStage : uint8
 	StrikeWall UMETA(DisplayName = "Strike Wall"),
 	BlockRocks UMETA(DisplayName = "Block Rocks"),
 	DestroySpawners UMETA(DisplayName = "Destroy Spawners"),
+	FreePlay UMETA(DisplayName = "FreePlay"),
 	Complete UMETA(DisplayName = "Complete")
 };

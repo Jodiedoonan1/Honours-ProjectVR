@@ -134,7 +134,7 @@ void UEarthLaunchAbilityComponent::TickComponent(float DeltaTime, ELevelTick Tic
         if (Capsule && GetWorld())
         {
             
-            if (GLaunchDebugAccum == 0.0f) // only when we logged above
+            if (GLaunchDebugAccum == 0.0f) 
             {
                 const FVector ActorLoc = Owner->GetActorLocation();
                 const FVector RootLoc  = Owner->GetRootComponent() ? Owner->GetRootComponent()->GetComponentLocation() : FVector::ZeroVector;

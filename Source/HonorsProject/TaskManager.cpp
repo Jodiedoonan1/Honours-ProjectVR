@@ -25,9 +25,12 @@ void ATaskManager::BeginPlay()
 	bTaskComplete = false;
 	CurrentTargetRockSize = ERockSize::Small;
 	CurrentTaskStage = ETaskStage::CreateSmallRock;
-//	CurrentTaskStage = ETaskStage::RaiseExistingRock;
+//	CurrentTaskStage = ETaskStage::FreePlay;
+//	SetFreePlay(
+//			FText::FromString(TEXT("FreePlay"))
+//		);
 	CurrentObjectiveText = FText::FromString(TEXT("Stomp the Ground to create a Small Rock.\nRaise a foot as if you're going up a step,\nand stomp with light force."));
-//	CurrentObjectiveText = FText::FromString(TEXT("Raise an existing rock"));
+//	CurrentObjectiveText = FText::FromString(TEXT("FreePlay"));
 	
 
 	if (TaskHUDWidgetClass)
@@ -403,7 +406,7 @@ void ATaskManager::SetRockObjective(ETaskStage NewStage, ERockSize NewRockSize, 
 	CurrentTargetRockSize = NewRockSize;
 	CurrentObjectiveText = NewObjectiveText;
 	CurrentProgress = 0;
-	RequiredProgress = 3;
+	RequiredProgress = 2;
 
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 
@@ -415,7 +418,7 @@ void ATaskManager::SetHandRockObjective(const FText& NewObjectiveText)
 	CurrentTaskStage = ETaskStage::CreateHandRock;
 	CurrentObjectiveText = NewObjectiveText;
 	CurrentProgress = 0;
-	RequiredProgress = 3;
+	RequiredProgress = 2;
 
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 	UpdateHUD();
@@ -426,7 +429,7 @@ void ATaskManager::SetPunchObjetive(const FText& NewObjectiveText)
 	CurrentTaskStage = ETaskStage::PunchRock;
 	CurrentObjectiveText = NewObjectiveText;
 	CurrentProgress = 0;
-	RequiredProgress = 3;
+	RequiredProgress = 2;
 	
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 	UpdateHUD();
@@ -437,7 +440,7 @@ void ATaskManager::SetKickObjective(const FText& NewObjectiveText)
 	CurrentTaskStage = ETaskStage::KickRock;
 	CurrentObjectiveText = NewObjectiveText;
 	CurrentProgress = 0;
-	RequiredProgress = 3;
+	RequiredProgress = 2;
 	
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 	UpdateHUD();
@@ -448,7 +451,7 @@ void ATaskManager::SetRaiseExistingRockObjective(const FText& NewObjectiveText)
 	CurrentTaskStage = ETaskStage::RaiseExistingRock;
 	CurrentObjectiveText = NewObjectiveText;
 	CurrentProgress = 0;
-	RequiredProgress = 3;
+	RequiredProgress = 2;
 	
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 	UpdateHUD();
@@ -503,7 +506,7 @@ void ATaskManager::SetWallStrikeObjective(const FText& NewObjectiveText)
 	CurrentTaskStage = ETaskStage::StrikeWall;
 	CurrentObjectiveText = NewObjectiveText;
 	CurrentProgress = 0;
-	RequiredProgress = 3;
+	RequiredProgress = 2;
 	
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 	UpdateHUD();
@@ -514,7 +517,7 @@ void ATaskManager::SetBlockedRockObjective(const FText& NewObjectiveText)
 	CurrentTaskStage = ETaskStage::BlockRocks;
 	CurrentObjectiveText = NewObjectiveText;
 	CurrentProgress = 0;
-	RequiredProgress = 5;
+	RequiredProgress = 2;
 	
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 	UpdateHUD();
@@ -539,6 +542,28 @@ void ATaskManager::SetDestroySpawnerObjective(const FText& NewObjectiveText)
 	
 	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
 	UpdateHUD();
+	
+	if (RockLauncherManager)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: RockLauncherManager is valid"), *GetName());
+		RockLauncherManager->StartFiring();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: RockLauncherManager is NULL"), *GetName());
+	}
+}
+
+void ATaskManager::SetFreePlay(const FText& NewObjectiveText)
+{
+	CurrentTaskStage = ETaskStage::FreePlay;
+	CurrentObjectiveText = NewObjectiveText;
+	CurrentProgress = 0;
+	
+	UE_LOG(LogTemp, Warning, TEXT("New Objective: %s"), *CurrentObjectiveText.ToString());
+	UpdateHUD();
+	
+	SpawnNextLaunchTarget();
 	
 	if (RockLauncherManager)
 	{
@@ -607,7 +632,7 @@ void ATaskManager::AdvanceToNextTask()
 	}
 	else if (CurrentTaskStage == ETaskStage::GoToNextObjective && CurrentMoveMarkerIndex == 0)
 	{
-		RequiredProgress = 5;
+		RequiredProgress = 2;
 		SetRaiseExistingRockObjective(
 			FText::FromString(TEXT("Raise an existing rock.\nLook at an existing rock,\nand then raise it with a stomp or with your hand"))
 			);
@@ -622,7 +647,7 @@ void ATaskManager::AdvanceToNextTask()
 	}
 	else if (CurrentTaskStage == ETaskStage::GoToNextObjective && CurrentMoveMarkerIndex == 1)
 	{
-		RequiredProgress = 9;
+		RequiredProgress = 3;
 		
 		SetRockTargetObjective(
 		FText::FromString(TEXT("Launch rocks at the targets.\nStronger strikes can help you cover more distance"))

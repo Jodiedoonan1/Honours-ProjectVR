@@ -134,6 +134,7 @@ public:
 	void SetWallStrikeObjective(const FText& NewObjectiveText);
 	void SetBlockedRockObjective(const FText& NewObjectiveText);
 	void SetDestroySpawnerObjective(const FText& NewObjectiveText);
+	void SetFreePlay(const FText& NewObjectiveText);
 	void SetComplete(const FText& NewObjectiveText);
 	
 	void PlayerHitReset();
@@ -182,7 +183,7 @@ protected:
 	FText CurrentObjectiveText;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Task")
-	int32 RequiredProgress = 3;
+	int32 RequiredProgress = 2;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Task")
 	int32 CurrentProgress = 0;

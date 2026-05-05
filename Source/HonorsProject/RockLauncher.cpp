@@ -56,9 +56,6 @@ void ARockLauncher::FireRock()
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	
-//	DrawDebugLine(GetWorld(), SpawnLocation, TargetLocation, FColor::Red, false, 2.0f, 0, 2.0f);
-//	DrawDebugDirectionalArrow(GetWorld(), SpawnLocation, SpawnLocation + (Direction * 300.f), 50.f, FColor::Green, false, 2.0f, 0, 2.0f);
 
 	AIncomingRock* Projectile = GetWorld()->SpawnActor<AIncomingRock>(
 		ProjectileClass,
